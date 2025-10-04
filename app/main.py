@@ -14,7 +14,6 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown logic (optional)
     # Example: close DB connections, cleanup tasks
-    print("Application is shutting down...")
 
 
 app = FastAPI(

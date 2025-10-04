@@ -26,14 +26,16 @@ from .security import get_current_user
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-UPLOAD_DIR = "./uploads"
+# Resolve uploads dir relative to project root to avoid CWD issues
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logger = logging.getLogger("routes_docs")
 logging.basicConfig(level=logging.INFO)
 
 
-def validate_pdf_file(file: UploadFile, file_path: str = None) -> None:
+def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
     """
     Comprehensive PDF file validation including filename, content type, size, and file content.
     
@@ -44,40 +46,41 @@ def validate_pdf_file(file: UploadFile, file_path: str = None) -> None:
     Raises:
         HTTPException: If any validation fails
     """
-    # Validate filename extension
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-    
-    # Validate file content type
-    allowed_content_types = ["application/pdf", "application/octet-stream"]
-    if file.content_type and file.content_type not in allowed_content_types:
-        raise HTTPException(
-            status_code=400, 
-            detail="Invalid file type. Only PDF files are allowed."
-        )
-    
-    # Check file size (100MB limit)
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-    if file.size and file.size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File too large. Maximum size allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
-        )
-    
-    # Additional file content validation using python-magic (if file path provided)
+    # If we have the saved path, trust content inspection over name/content-type
     if file_path and os.path.exists(file_path):
         try:
             file_mime_type = magic.from_file(file_path, mime=True)
             if file_mime_type != "application/pdf":
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail="Invalid file content. The file must be a valid PDF document."
                 )
+            # Size check using filesystem
+            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+            size_bytes = os.path.getsize(file_path)
+            if size_bytes > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large. Maximum size allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
+                )
+            return
         except magic.MagicException:
-            # If python-magic is not available, log warning but continue
-            logger.warning("python-magic not available for file type validation")
+            logger.warning("python-magic not available for file type validation; falling back to filename/content-type checks")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File validation failed: {str(e)}")
+
+    # Fallback checks when path inspection is not available
+    # Validate filename extension (best-effort)
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported (missing .pdf extension)")
+
+    # Validate file content type (best-effort)
+    allowed_content_types = ["application/pdf", "application/octet-stream"]
+    if file.content_type and file.content_type not in allowed_content_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only PDF files are allowed."
+        )
 
 
 def _safe_update_doc_status(doc_id: int, status: str, chunk_count: int | None = None):
@@ -105,18 +108,26 @@ def _safe_update_doc_status(doc_id: int, status: str, chunk_count: int | None = 
 def process_pdf_background(user_id: int, doc_id: int, path: str):
     """
     Background worker: per-page extraction, chunk, embed, store to vector DB.
-    - If extract_pages_text is available: uses per-page strategy (text vs OCR).
-    - Otherwise, uses full-text extraction and indexes it.
+    Uses extract_pages_text with OCR fallback for scanned/handwritten PDFs.
     """
-    logger.info(f"[BG] Start processing doc={doc_id} user={user_id} path={path}")
     total_chunks = 0
 
     try:
         if _USE_PAGE_EXTRACTOR:
-            # extract_pages_text should return list of dicts:
-            # [{"page": 1, "text": "...", "source": "text"|"ocr"|"needs_ocr", "confidence": float}, ...]
-            pages = extract_pages_text(path)
-            logger.info(f"[BG] extract_pages_text returned {len(pages)} pages for doc={doc_id}")
+            from .pdf_processor import extract_pages_text as extract_with_force
+
+            # First pass: normal extraction (try text layer first)
+            pages = extract_with_force(path)
+
+            # Check if we have meaningful text extracted
+            meaningful_pages = [p for p in pages if p.get("text") and p.get("text").strip()]
+            
+            # Only retry with Azure OCR if no meaningful text was extracted
+            if not meaningful_pages:
+                logger.info(f"[BG] No meaningful text extracted for doc={doc_id}, retrying with Azure OCR (force_ocr=True)")
+                pages = extract_with_force(path, force_ocr=True)
+            else:
+                logger.info(f"[BG] Found meaningful text in {len(meaningful_pages)}/{len(pages)} pages for doc={doc_id} - skipping OCR")
 
             for p in pages:
                 page_number = p.get("page", None)
@@ -137,7 +148,6 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
                     continue
 
                 embeddings = [get_embedding(c) for c in chunks]
-
                 metadatas = [
                     {
                         "doc_id": str(doc_id),
@@ -152,6 +162,9 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
                 add_chunks(user_id, doc_id, chunks, embeddings, metadatas=metadatas)
                 total_chunks += len(chunks)
 
+                # Incremental progress update so frontend can display rising chunk_count
+                _safe_update_doc_status(doc_id, status="processing", chunk_count=total_chunks)
+
         else:
             # Fallback: single full-text extraction
             text = extract_text_from_pdf(path)
@@ -163,14 +176,13 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
                 metadatas = [{"doc_id": str(doc_id), "chunk_id": i} for i in range(len(chunks))]
                 add_chunks(user_id, doc_id, chunks, embeddings, metadatas=metadatas)
                 total_chunks = len(chunks)
+                _safe_update_doc_status(doc_id, status="processing", chunk_count=total_chunks)
 
-        # Update document status to processed and set chunk_count
+        # ✅ Final update
         _safe_update_doc_status(doc_id, status="processed", chunk_count=total_chunks)
-        logger.info(f"[BG] Finished processing doc={doc_id} total_chunks={total_chunks}")
 
     except Exception as e:
         logger.exception(f"[BG] Exception while processing doc={doc_id}: {e}")
-        # Update status to failed
         _safe_update_doc_status(doc_id, status="failed", chunk_count=total_chunks)
 
 
@@ -181,17 +193,24 @@ async def upload_pdf(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    # Comprehensive PDF validation
-    validate_pdf_file(file)
-
     fname = f"{uuid.uuid4().hex}_{file.filename}"
     path = os.path.join(UPLOAD_DIR, fname)
 
-    # Save uploaded file temporarily
+    # Save uploaded file temporarily (absolute path)
+    file_bytes = await file.read()
     with open(path, "wb") as f:
-        f.write(await file.read())
+        f.write(file_bytes)
+
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        logger.error(f"[upload_pdf] Failed to persist file to {path}")
+        raise HTTPException(status_code=500, detail="Failed to persist uploaded file")
+    else:
+        try:
+            size = os.path.getsize(path)
+        except Exception:
+            pass
     
-    # Additional file content validation using python-magic
+    # Content-based validation using python-magic (filename extension not required)
     try:
         validate_pdf_file(file, path)
     except HTTPException:
@@ -300,30 +319,3 @@ def delete_document(
     session.commit()
 
     return {"message": "Deleted", "vector_delete_result": res}
-
-
-# Debug endpoints
-
-@router.get("/debug/all")
-def debug_all_docs(user=Depends(get_current_user)):
-    """List all docs stored in Chroma for this user."""
-    col = collection_for_user(user.id)
-    data = col.get()
-    return {
-        "total_docs": len(data.get("documents", [])),
-        "sample_metadatas": data.get("metadatas", [])[:5],
-        "sample_ids": data.get("ids", [])[:5],
-    }
-
-
-@router.get("/debug/{doc_id}")
-def debug_doc(doc_id: str, user=Depends(get_current_user)):
-    """List chunks only for one specific doc_id."""
-    col = collection_for_user(user.id)
-    data = col.get(where={"doc_id": str(doc_id)})
-    return {
-        "requested_doc_id": doc_id,
-        "total_docs": len(data.get("documents", [])),
-        "sample_metadatas": data.get("metadatas", [])[:5],
-        "sample_ids": data.get("ids", [])[:5],
-    }

@@ -13,7 +13,9 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "openai")
-OCR_BACKEND = os.getenv("OCR_BACKEND", "trocr")  # options: 'trocr', 'paddle', 'tesseract', 'google'
-OCR_DEVICE = os.getenv("OCR_DEVICE", "cpu")     # 'cpu' or 'cuda'
 PDF2IMAGE_DPI = int(os.getenv("PDF2IMAGE_DPI", "200"))
-TESSERACT_CMD = os.getenv("TESSERACT_CMD", "tesseract")  # if installed in custom location
+
+# Azure AI Document Intelligence (for high-quality OCR incl. handwriting)
+AZURE_DI_ENDPOINT = os.getenv("AZURE_DI_ENDPOINT", "")  # e.g. https://<resource-name>.cognitiveservices.azure.com
+AZURE_DI_KEY = os.getenv("AZURE_DI_KEY", "")
+AZURE_DI_API_VERSION = os.getenv("AZURE_DI_API_VERSION", "2024-07-31")

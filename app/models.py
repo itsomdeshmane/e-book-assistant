@@ -21,6 +21,7 @@ class Document(SQLModel, table=True):
     filename: str
     file_hash: str = Field(index=True)   # ✅ NEW: unique per user
     chunk_count: int
+    status: str = Field(default="processing", index=True)  # processing, processed, failed
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     owner: User = Relationship(back_populates="documents")

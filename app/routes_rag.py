@@ -8,6 +8,9 @@ from .models import Document, Conversation
 from .query_engine import answer_query, summarize, generate_interview_questions
 from .conversation_manager import ConversationManager
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
@@ -18,12 +21,10 @@ def ask(payload: AskRequest, session: Session = Depends(get_session), user=Depen
     if not doc or doc.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # Generate the answer
-    answer = answer_query(user.id, payload.doc_id, payload.query, top_k=payload.top_k)
-    
-    # Store conversation
+    # Get conversation history for context
+    conversation_history = []
     try:
-        # Get or create conversation
+        # Get or create conversation first
         conversation = ConversationManager.get_or_create_conversation(
             session=session,
             user_id=user.id,
@@ -31,31 +32,58 @@ def ask(payload: AskRequest, session: Session = Depends(get_session), user=Depen
             title=f"Chat about {doc.title}"
         )
         
-        # Store user question
-        ConversationManager.add_message(
-            session=session,
-            conversation_id=conversation.id,
-            role="user",
-            content=payload.query,
-            metadata={"top_k": payload.top_k, "doc_title": doc.title}
-        )
-        
-        # Store assistant answer
-        ConversationManager.add_message(
-            session=session,
-            conversation_id=conversation.id,
-            role="assistant", 
-            content=answer,
-            metadata={"doc_title": doc.title, "model_used": "gpt-3.5-turbo"}
-        )
+        # Get recent conversation history for context
+        messages = ConversationManager.get_conversation_messages(session, conversation.id)
+        conversation_history = [
+            {
+                "role": msg.role,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None
+            }
+            for msg in messages[-10:]  # Get last 10 messages for context
+        ]
         
     except Exception as e:
-        # Log error but don't fail the request if storage fails
-        print(f"Warning: Failed to store conversation: {e}")
+        logger.warning(f"Failed to get conversation history: {e}")
+        conversation = None
+    
+    # Generate the answer with conversation history context
+    answer = answer_query(
+        user.id, 
+        payload.doc_id, 
+        payload.query, 
+        top_k=payload.top_k,
+        conversation_history=conversation_history
+    )
+    
+    # Store conversation if we have a conversation object
+    if conversation:
+        try:
+            # Store user question
+            ConversationManager.add_message(
+                session=session,
+                conversation_id=conversation.id,
+                role="user",
+                content=payload.query,
+                metadata={"top_k": payload.top_k, "doc_title": doc.title}
+            )
+            
+            # Store assistant answer
+            ConversationManager.add_message(
+                session=session,
+                conversation_id=conversation.id,
+                role="assistant", 
+                content=answer,
+                metadata={"doc_title": doc.title, "model_used": "gpt-3.5-turbo"}
+            )
+            
+        except Exception as e:
+            # Log error but don't fail the request if storage fails
+            logger.warning(f"Failed to store conversation: {e}")
     
     return {
         "answer": answer,
-        "conversation_id": conversation.id if 'conversation' in locals() else None
+        "conversation_id": conversation.id if conversation else None
     }
 
 @router.post("/summarize")
@@ -96,7 +124,7 @@ def interview_questions(payload: InterviewRequest, session: Session = Depends(ge
             )
         except Exception as e:
             # Log error but don't fail the request if storage fails
-            print(f"Warning: Failed to store interview session: {e}")
+            logger.warning(f"Failed to store interview session: {e}")
     
     return result
 

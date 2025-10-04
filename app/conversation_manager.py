@@ -42,7 +42,6 @@ class ConversationManager:
             session.commit()
             session.refresh(conversation)
             
-            logger.info(f"[ConversationManager] Created new conversation {conversation.id}")
             return conversation
             
         except Exception as e:
@@ -77,7 +76,6 @@ class ConversationManager:
             session.commit()
             session.refresh(message)
             
-            logger.info(f"[ConversationManager] Added message {message.id} to conversation {conversation_id}")
             return message
             
         except Exception as e:
@@ -127,7 +125,6 @@ class ConversationManager:
             session.commit()
             session.refresh(interview_session)
             
-            logger.info(f"[ConversationManager] Stored interview session {interview_session.id} with {len(questions)} questions")
             return interview_session
             
         except Exception as e:
