@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  e-book-assistant:
+    build: .
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      # Server Configuration
+      - PORT=${PORT:-8000}
+      - ALLOW_ORIGINS=${ALLOW_ORIGINS:-*}
+      
+      # OpenAI Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # JWT Configuration
+      - JWT_SECRET=${JWT_SECRET:-change_me_in_production}
+      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-120}
+      
+      # Database Configuration
+      - DATABASE_URL=sqlite:///./app.db
+      - CHROMA_DB_DIR=${CHROMA_DB_DIR:-./chroma_db}
+      
+      # Text Processing Configuration
+      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+      - MODEL_NAME=${MODEL_NAME:-gpt-4o-mini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-openai}
+      
+      # PDF Processing Configuration
+      - PDF2IMAGE_DPI=${PDF2IMAGE_DPI:-200}
+      
+      # Azure AI Document Intelligence Configuration
+      - AZURE_DI_ENDPOINT=${AZURE_DI_ENDPOINT}
+      - AZURE_DI_KEY=${AZURE_DI_KEY}
+      - AZURE_DI_API_VERSION=${AZURE_DI_API_VERSION:-2024-07-31}
+    volumes:
+      # Persist database and uploads
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./chroma_db:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get(f'http://localhost:${PORT:-8000}/healthz')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

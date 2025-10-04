@@ -3,16 +3,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Server Configuration
+PORT = int(os.getenv("PORT", "8000"))
+ALLOW_ORIGINS = os.getenv("ALLOW_ORIGINS", "*")
+
+# OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# JWT Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "change_me")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
-CHROMA_DB_DIR = os.getenv("CHROMA_DB_DIR", "./chroma_db")
+
+# Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+CHROMA_DB_DIR = os.getenv("CHROMA_DB_DIR", "./chroma_db")
+
+# Text Processing Configuration
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "openai")
+
+# PDF Processing Configuration
 PDF2IMAGE_DPI = int(os.getenv("PDF2IMAGE_DPI", "200"))
 
 # Azure AI Document Intelligence (for high-quality OCR incl. handwriting)

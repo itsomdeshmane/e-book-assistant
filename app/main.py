@@ -5,6 +5,7 @@ from .db import init_db
 from .routes_auth import router as auth_router
 from .routes_docs import router as docs_router
 from .routes_rag import router as rag_router
+from .config import ALLOW_ORIGINS
 
 
 @asynccontextmanager
@@ -25,7 +26,7 @@ app = FastAPI(
 # Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # you can restrict this to specific origins later
+    allow_origins=[ALLOW_ORIGINS] if ALLOW_ORIGINS != "*" else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

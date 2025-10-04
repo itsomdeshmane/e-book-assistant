@@ -13,6 +13,24 @@
 - **Production-Ready Logging** - Clean, focused logging without debug clutter
 
 ## Quickstart
+
+### Option 1: Docker (Recommended)
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd e-book-assistant
+
+# Create environment file (see Configuration section below)
+# Edit .env with your configuration
+
+# Run with Docker Compose
+docker-compose up -d
+
+# Open Swagger UI
+# http://localhost:8000/docs
+```
+
+### Option 2: Local Development
 ```bash
 python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -30,6 +48,10 @@ uvicorn app.main:app --reload
 Create a `.env` file in the project root with the following variables:
 
 ```env
+# Server Configuration
+PORT=8000
+ALLOW_ORIGINS=*
+
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
 
@@ -164,6 +186,101 @@ Extracted Text → Quality Check → Decision
 - **Slow Upload**: Normal for first-time OCR processing
 - **Fast Processing**: Expected for documents with good text extraction
 - **Memory Usage**: Monitor during large document processing
+
+## Docker Deployment
+
+### Prerequisites
+- Docker and Docker Compose installed
+- OpenAI API key
+- Azure AI Document Intelligence credentials (optional but recommended)
+
+### Environment Setup
+Create a `.env` file in the project root:
+
+Edit the `.env` file with your actual values:
+```env
+# Server Configuration
+PORT=8000
+ALLOW_ORIGINS=*
+
+# Required
+OPENAI_API_KEY=your_openai_api_key_here
+JWT_SECRET=your_secure_jwt_secret_here
+
+# Optional but recommended
+AZURE_DI_ENDPOINT=https://your-resource-name.cognitiveservices.azure.com
+AZURE_DI_KEY=your_azure_di_key_here
+```
+
+### Running with Docker Compose
+```bash
+# Build and start the application
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the application
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+### Docker Commands
+```bash
+# Build the image
+docker build -t e-book-assistant .
+
+# Run the container
+docker run -p 8000:8000 --env-file .env e-book-assistant
+
+# Run with volume mounts for persistence
+docker run -p 8000:8000 \
+  -v $(pwd)/uploads:/app/uploads \
+  -v $(pwd)/chroma_db:/app/chroma_db \
+  -v $(pwd)/app.db:/app/app.db \
+  --env-file .env \
+  e-book-assistant
+```
+
+### Data Persistence
+The Docker setup includes volume mounts for:
+- `uploads/` - PDF files and processed documents
+- `chroma_db/` - Vector database storage
+- `app.db` - SQLite database
+
+### Health Checks
+The application includes health checks accessible at:
+- Container health check: Built into Docker image
+- Application health endpoint: `http://localhost:8000/healthz`
+
+### Cloud Deployment
+The application is ready for deployment on various cloud platforms:
+
+#### Heroku
+```bash
+# Set environment variables
+heroku config:set OPENAI_API_KEY=your_key
+heroku config:set JWT_SECRET=your_secret
+heroku config:set PORT=8000
+heroku config:set ALLOW_ORIGINS=https://your-app.herokuapp.com
+
+# Deploy
+git push heroku main
+```
+
+#### Railway
+```bash
+# Set environment variables in Railway dashboard
+# PORT is automatically set by Railway
+# ALLOW_ORIGINS should be set to your domain
+```
+
+#### Google Cloud Run / AWS ECS
+- Set `PORT` environment variable (usually provided by the platform)
+- Set `ALLOW_ORIGINS` to your domain for security
+- Set `CHROMA_DB_DIR` to `/tmp/chroma_db` for ephemeral storage
 
 ## Development
 
