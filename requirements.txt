@@ -1,3 +1,15 @@
+# =============================================================================
+# CRITICAL COMPATIBILITY NOTICE
+# =============================================================================
+# This project uses ChromaDB which is NOT compatible with NumPy 2.0+
+# All ML dependencies are pinned to versions that work with NumPy 1.x
+# 
+# BEFORE UPGRADING ANY ML PACKAGES:
+# 1. Test with NumPy 2.x compatibility
+# 2. Check ChromaDB release notes for NumPy 2.x support
+# 3. Update Dockerfile constraints accordingly
+# =============================================================================
+
 # Web Framework
 fastapi>=0.118.0
 uvicorn[standard]>=0.37.0
@@ -10,11 +22,13 @@ opencv-python-headless>=4.12.0
 pdfplumber>=0.11.0
 
 # Vector Database & AI
-chromadb>=1.1.0
+# CRITICAL: These versions are pinned for NumPy 1.x compatibility
+# Do not upgrade without testing NumPy 2.x compatibility
+chromadb==0.5.3
 openai>=1.109.0
-transformers>=4.56.0
-torch>=2.8.0
-sentence-transformers>=5.1.0
+transformers==4.42.4
+torch==2.1.0+cpu
+sentence-transformers==2.7.0
 sentencepiece>=0.1.99
 
 # Database & ORM
@@ -39,5 +53,5 @@ email-validator>=2.1.0
 python-magic>=0.4.27
 
 # Scientific Computing & Image Processing
-numpy>=2.2.0
+numpy>=1.24.0,<2.0.0
 opencv-python>=4.12.0

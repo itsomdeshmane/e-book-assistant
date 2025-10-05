@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db
@@ -8,9 +9,25 @@ from .routes_rag import router as rag_router
 from .config import ALLOW_ORIGINS
 
 
+def check_numpy_compatibility():
+    """Check NumPy version compatibility with ChromaDB"""
+    try:
+        import numpy
+        if numpy.__version__.startswith('2.'):
+            logging.error(f"CRITICAL: NumPy 2.x detected ({numpy.__version__}). "
+                         f"ChromaDB is not compatible with NumPy 2.x. "
+                         f"This will cause runtime errors!")
+            raise RuntimeError(f"NumPy 2.x incompatibility detected: {numpy.__version__}")
+        else:
+            logging.info(f"NumPy version check passed: {numpy.__version__}")
+    except ImportError:
+        logging.warning("NumPy not found - this may cause issues with ML dependencies")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
+    check_numpy_compatibility()
     init_db()
     yield
     # Shutdown logic (optional)

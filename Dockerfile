@@ -31,21 +31,26 @@ RUN apt-get update --fix-missing && \
 COPY requirements.txt .
 
 # ------------------------------------------------------------
-# 🔧 Fix: enforce NumPy 1.x for PyTorch & SentenceTransformers
+# 🔧 CRITICAL: Enforce NumPy 1.x compatibility
+# ChromaDB, PyTorch, and SentenceTransformers are NOT compatible with NumPy 2.0+
+# This MUST be installed first to prevent dependency conflicts
 # ------------------------------------------------------------
-RUN pip install --no-cache-dir "numpy<2"
+RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0.0"
 
 # Install core Python dependencies
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     fastapi uvicorn[standard] sqlmodel python-dotenv pydantic pydantic-settings
 
 # Install ML dependencies (CPU version for Railway)
+# NOTE: These versions are tested to work with NumPy 1.x
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
-# Install Transformer and Chroma stack
+# Install Transformer and Chroma stack with explicit NumPy constraints
+# CRITICAL: These packages MUST use NumPy 1.x - do not upgrade without testing
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    "chromadb==0.5.3" "openai" "transformers==4.42.4" "sentence-transformers==2.7.0" "sentencepiece"
+    "chromadb==0.5.3" "openai" "transformers==4.42.4" "sentence-transformers==2.7.0" "sentencepiece" \
+    && pip check
 
 # Install remaining dependencies
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
@@ -53,6 +58,9 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     passlib[bcrypt] python-jose[cryptography] python-multipart \
     azure-ai-documentintelligence requests email-validator \
     python-magic opencv-python
+
+# Verify NumPy version is correct (should be 1.x)
+RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('1.'), f'NumPy 2.x detected: {numpy.__version__}. This will cause ChromaDB compatibility issues!'"
 
 # Final cleanup (Railway-safe, no pip purge)
 RUN apt-get autoremove -y && apt-get clean && \
