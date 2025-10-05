@@ -30,34 +30,43 @@ RUN apt-get update --fix-missing && \
 # Copy requirements first (for build cache efficiency)
 COPY requirements.txt .
 
+# Create constraints file to enforce NumPy 1.x
+RUN echo "numpy>=1.24.0,<2.0.0" > /tmp/constraints.txt
+
 # ------------------------------------------------------------
 # 🔧 CRITICAL: Enforce NumPy 1.x compatibility
 # ChromaDB, PyTorch, and SentenceTransformers are NOT compatible with NumPy 2.0+
-# This MUST be installed first to prevent dependency conflicts
+# This MUST be installed first and locked to prevent dependency conflicts
 # ------------------------------------------------------------
-RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0.0"
+RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=1.24.0,<2.0.0"
 
-# Install core Python dependencies
+# Install core Python dependencies (no ML packages yet)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    fastapi uvicorn[standard] sqlmodel python-dotenv pydantic pydantic-settings
+    fastapi uvicorn[standard] sqlmodel python-dotenv pydantic pydantic-settings \
+    passlib[bcrypt] python-jose[cryptography] python-multipart \
+    requests email-validator python-magic
 
-# Install ML dependencies (CPU version for Railway)
-# NOTE: These versions are tested to work with NumPy 1.x
+# Install PDF processing dependencies (these might pull NumPy 2.x)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+    pypdf pdf2image pillow pdfplumber azure-ai-documentintelligence
 
-# Install Transformer and Chroma stack with explicit NumPy constraints
-# CRITICAL: These packages MUST use NumPy 1.x - do not upgrade without testing
+# Install OpenCV with NumPy constraint
+RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
+    opencv-python-headless opencv-python \
+    --constraint /tmp/constraints.txt
+
+# Install PyTorch CPU version (compatible with NumPy 1.x)
+RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
+    torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu \
+    --constraint /tmp/constraints.txt
+
+# Install ML stack with strict NumPy constraint
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     "chromadb==0.5.3" "openai" "transformers==4.42.4" "sentence-transformers==2.7.0" "sentencepiece" \
-    && pip check
+    --constraint /tmp/constraints.txt
 
-# Install remaining dependencies
-RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    pypdf pdf2image pillow opencv-python-headless pdfplumber \
-    passlib[bcrypt] python-jose[cryptography] python-multipart \
-    azure-ai-documentintelligence requests email-validator \
-    python-magic opencv-python
+# Force NumPy 1.x again after all installations
+RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=1.24.0,<2.0.0"
 
 # Verify NumPy version is correct (should be 1.x)
 RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('1.'), f'NumPy 2.x detected: {numpy.__version__}. This will cause ChromaDB compatibility issues!'"
