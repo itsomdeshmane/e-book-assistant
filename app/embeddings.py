@@ -14,8 +14,9 @@ if os.getenv("OPENAI_API_KEY"):
         logging.warning(f"[Embeddings] Failed to init OpenAI client: {e}")
         _client = None
 
-# Local fallback model
-_local_model = SentenceTransformer("all-MiniLM-L6-v2")
+# Local fallback model - use explicit cache directory
+_cache_dir = os.getenv("HF_HOME", "/app/.cache/huggingface")
+_local_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=_cache_dir)
 
 
 def get_embedding(text: str):
