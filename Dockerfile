@@ -44,7 +44,7 @@ RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=1.24.0,<2.0.0
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     fastapi uvicorn[standard] sqlmodel python-dotenv pydantic pydantic-settings \
     passlib[bcrypt] argon2-cffi python-jose[cryptography] python-multipart \
-    requests email-validator python-magic
+    requests email-validator python-magic psutil
 
 # Install PDF processing dependencies (these might pull NumPy 2.x)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \

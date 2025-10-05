@@ -52,6 +52,7 @@ azure-ai-documentintelligence>=1.0.0
 requests>=2.31.0
 email-validator>=2.1.0
 python-magic>=0.4.27
+psutil>=5.9.0
 
 # Scientific Computing & Image Processing
 numpy>=1.24.0,<2.0.0

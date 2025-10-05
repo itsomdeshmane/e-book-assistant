@@ -107,10 +107,18 @@ def _safe_update_doc_status(doc_id: int, status: str, chunk_count: int | None = 
 
 def process_pdf_background(user_id: int, doc_id: int, path: str):
     """
-    Background worker: per-page extraction, chunk, embed, store to vector DB.
+    Memory-optimized background worker: per-page extraction, chunk, embed, store to vector DB.
     Uses extract_pages_text with OCR fallback for scanned/handwritten PDFs.
     """
     total_chunks = 0
+    
+    # Import memory utilities
+    try:
+        from .pdf_processor import log_memory_usage, cleanup_memory
+        log_memory_usage(f"Starting PDF processing for doc_id={doc_id}")
+    except ImportError:
+        def log_memory_usage(stage): pass
+        def cleanup_memory(): pass
 
     try:
         if _USE_PAGE_EXTRACTOR:
@@ -162,6 +170,10 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
                 add_chunks(user_id, doc_id, chunks, embeddings, metadatas=metadatas)
                 total_chunks += len(chunks)
 
+                # Clean up after each page to prevent memory buildup
+                del chunks, embeddings, metadatas
+                cleanup_memory()
+
                 # Incremental progress update so frontend can display rising chunk_count
                 _safe_update_doc_status(doc_id, status="processing", chunk_count=total_chunks)
 
@@ -176,14 +188,24 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
                 metadatas = [{"doc_id": str(doc_id), "chunk_id": i} for i in range(len(chunks))]
                 add_chunks(user_id, doc_id, chunks, embeddings, metadatas=metadatas)
                 total_chunks = len(chunks)
+                
+                # Clean up after processing
+                del chunks, embeddings, metadatas, text
+                cleanup_memory()
+                
                 _safe_update_doc_status(doc_id, status="processing", chunk_count=total_chunks)
 
         # ✅ Final update
+        log_memory_usage(f"Completed PDF processing for doc_id={doc_id}")
         _safe_update_doc_status(doc_id, status="processed", chunk_count=total_chunks)
 
     except Exception as e:
         logger.exception(f"[BG] Exception while processing doc={doc_id}: {e}")
+        log_memory_usage(f"Failed PDF processing for doc_id={doc_id}")
         _safe_update_doc_status(doc_id, status="failed", chunk_count=total_chunks)
+    finally:
+        # Final cleanup
+        cleanup_memory()
 
 
 @router.post("/upload")

@@ -26,7 +26,9 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "openai")
 
 # PDF Processing Configuration
-PDF2IMAGE_DPI = int(os.getenv("PDF2IMAGE_DPI", "200"))
+PDF2IMAGE_DPI = int(os.getenv("PDF2IMAGE_DPI", "150"))  # Reduced from 200 to save memory
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))  # Limit pages to prevent OOM
+PROCESS_PAGES_BATCH_SIZE = int(os.getenv("PROCESS_PAGES_BATCH_SIZE", "5"))  # Process pages in batches
 
 # Azure AI Document Intelligence (for high-quality OCR incl. handwriting)
 AZURE_DI_ENDPOINT = os.getenv("AZURE_DI_ENDPOINT", "")  # e.g. https://<resource-name>.cognitiveservices.azure.com
