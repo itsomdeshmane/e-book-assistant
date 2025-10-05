@@ -41,9 +41,16 @@ app = FastAPI(
 )
 
 # Middleware
+# Handle CORS origins properly - support both single origin and comma-separated list
+if ALLOW_ORIGINS == "*":
+    allowed_origins = ["*"]
+else:
+    # Split by comma and strip whitespace for multiple origins
+    allowed_origins = [origin.strip() for origin in ALLOW_ORIGINS.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ALLOW_ORIGINS] if ALLOW_ORIGINS != "*" else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
