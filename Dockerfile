@@ -30,15 +30,11 @@ RUN apt-get update --fix-missing && \
 # Copy requirements first (for build cache efficiency)
 COPY requirements.txt .
 
-# Create constraints file to enforce NumPy 1.x
-RUN echo "numpy>=1.24.0,<2.0.0" > /tmp/constraints.txt
-
 # ------------------------------------------------------------
-# 🔧 CRITICAL: Enforce NumPy 1.x compatibility
-# ChromaDB, PyTorch, and SentenceTransformers are NOT compatible with NumPy 2.0+
-# This MUST be installed first and locked to prevent dependency conflicts
+# 🔧 UPDATED: Using NumPy 2.x with compatible versions
+# Latest PyTorch, ChromaDB, and SentenceTransformers now support NumPy 2.x
 # ------------------------------------------------------------
-RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=1.24.0,<2.0.0"
+RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=2.1.3"
 
 # Install core Python dependencies (no ML packages yet)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
@@ -50,26 +46,20 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     pypdf pdf2image pillow pdfplumber azure-ai-documentintelligence
 
-# Install OpenCV with NumPy constraint
+# Install OpenCV (NumPy 2.x compatible)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    opencv-python-headless opencv-python \
-    --constraint /tmp/constraints.txt
+    opencv-python-headless opencv-python
 
-# Install PyTorch CPU version (compatible with NumPy 1.x)
+# Install PyTorch (standard PyPI version, NumPy 2.x compatible)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu \
-    --constraint /tmp/constraints.txt
+    torch==2.9.0
 
-# Install ML stack with strict NumPy constraint
+# Install ML stack (all NumPy 2.x compatible versions)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    "chromadb==0.5.3" "openai" "transformers==4.42.4" "sentence-transformers==2.7.0" "sentencepiece" \
-    --constraint /tmp/constraints.txt
+    "chromadb>=0.5.14" "openai" "transformers>=4.46.0" "sentence-transformers==2.7.0" "sentencepiece"
 
-# Force NumPy 1.x again after all installations
-RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=1.24.0,<2.0.0"
-
-# Verify NumPy version is correct (should be 1.x)
-RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('1.'), f'NumPy 2.x detected: {numpy.__version__}. This will cause ChromaDB compatibility issues!'"
+# Verify NumPy version is correct (should be 2.x)
+RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('2.'), f'Expected NumPy 2.x but got: {numpy.__version__}'"
 
 # Final cleanup (Railway-safe, no pip purge)
 RUN apt-get autoremove -y && apt-get clean && \
