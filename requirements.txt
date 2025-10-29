@@ -24,14 +24,10 @@ pdfplumber==0.11.4
 pymupdf>=1.23.0  # PDF rendering fallback (fitz)
 
 # Vector Database & AI
-# Using CPU-only PyTorch to minimize package size (~2GB savings)
-# For CPU-only install: pip install torch --index-url https://download.pytorch.org/whl/cpu
-chromadb==0.5.5
+# Using Pinecone for cloud-based vector storage
+# OpenAI for embeddings (mandatory)
+pinecone>=5.0.0
 openai==1.51.0
-transformers==4.44.2
-torch  # CPU-only version recommended
-sentence-transformers==3.1.1
-sentencepiece==0.2.0
 
 # Database & ORM
 sqlmodel==0.0.22

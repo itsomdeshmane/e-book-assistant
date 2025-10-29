@@ -7,8 +7,18 @@ load_dotenv()
 PORT = int(os.getenv("PORT", "8000"))
 ALLOW_ORIGINS = os.getenv("ALLOW_ORIGINS", "*")
 
-# OpenAI Configuration
+# OpenAI Configuration (Mandatory)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is required")
+
+# Pinecone Configuration (Mandatory)
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "e-book-assistant-9eiz80o")
+if not PINECONE_API_KEY:
+    raise ValueError("PINECONE_API_KEY environment variable is required")
+if not PINECONE_INDEX_NAME:
+    raise ValueError("PINECONE_INDEX_NAME environment variable is required")
 
 # JWT Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "change_me")
@@ -16,7 +26,6 @@ JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-CHROMA_DB_DIR = os.getenv("CHROMA_DB_DIR", "./chroma_db")
 
 # Text Processing Configuration
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
