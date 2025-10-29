@@ -60,6 +60,13 @@ jobs:
         with:
           name: python-app
       
+      - name: Display artifact contents
+        run: |
+          echo "Artifact contents:"
+          ls -la
+          echo "App directory:"
+          ls -la app/ || echo "No app directory"
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -74,4 +81,6 @@ jobs:
           app-name: 'e-book-assistant-api'
           slot-name: 'Production'
           startup-command: 'bash startup.sh'
+          clean: true
+          restart: true
           
