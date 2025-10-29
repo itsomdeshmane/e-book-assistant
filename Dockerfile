@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# Use Python 3.13 slim image as base
+FROM python:3.13-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -31,35 +31,56 @@ RUN apt-get update --fix-missing && \
 COPY requirements.txt .
 
 # ------------------------------------------------------------
-# 🔧 UPDATED: Using NumPy 2.x with compatible versions
-# Latest PyTorch, ChromaDB, and SentenceTransformers now support NumPy 2.x
+# 🔧 Install NumPy 2.x (compatible with ChromaDB 0.5.5+ and Python 3.13+)
+# OpenCV requires numpy<2.3, so we cap at 2.2.x
 # ------------------------------------------------------------
-RUN pip install --no-cache-dir --force-reinstall --no-deps "numpy>=2.1.3"
+RUN pip install --no-cache-dir "numpy>=2.0,<2.3"
 
 # Install core Python dependencies (no ML packages yet)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    fastapi uvicorn[standard] sqlmodel python-dotenv pydantic pydantic-settings \
-    passlib[bcrypt] argon2-cffi python-jose[cryptography] python-multipart \
-    requests email-validator python-magic psutil
+    fastapi==0.115.0 \
+    uvicorn[standard]==0.30.6 \
+    sqlmodel==0.0.22 \
+    python-dotenv==1.0.1 \
+    pydantic==2.9.2 \
+    pydantic-settings==2.5.2 \
+    passlib[bcrypt]==1.7.4 \
+    argon2-cffi==23.1.0 \
+    python-jose[cryptography]==3.3.0 \
+    python-multipart==0.0.12 \
+    requests==2.32.3 \
+    email-validator==2.2.0 \
+    python-magic==0.4.27 \
+    psutil==6.0.0
 
-# Install PDF processing dependencies (these might pull NumPy 2.x)
+# Install PDF processing dependencies
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    pypdf pdf2image pillow pdfplumber azure-ai-documentintelligence
+    pypdf==4.3.1 \
+    pdf2image==1.17.0 \
+    pillow==10.4.0 \
+    pdfplumber==0.11.4 \
+    pymupdf>=1.23.0 \
+    azure-ai-documentintelligence==1.0.0b4
 
-# Install OpenCV (NumPy 2.x compatible)
+# Install OpenCV (headless for Docker, no GUI dependencies)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    opencv-python-headless opencv-python
+    opencv-python-headless==4.10.0.84 \
+    opencv-python==4.10.0.84
 
-# Install PyTorch (standard PyPI version, NumPy 2.x compatible)
+# Install PyTorch CPU-only version (~2GB smaller than CUDA version)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    torch==2.9.0
+    torch --index-url https://download.pytorch.org/whl/cpu
 
-# Install ML stack (all NumPy 2.x compatible versions)
+# Install ML stack (ChromaDB, embeddings, transformers)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    "chromadb>=0.5.14" "openai" "transformers>=4.46.0" "sentence-transformers==2.7.0" "sentencepiece"
+    chromadb==0.5.5 \
+    openai==1.51.0 \
+    transformers==4.44.2 \
+    sentence-transformers==3.1.1 \
+    sentencepiece==0.2.0
 
-# Verify NumPy version is correct (should be 2.x)
-RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('2.'), f'Expected NumPy 2.x but got: {numpy.__version__}'"
+# Verify dependencies are installed correctly
+RUN python -c "import numpy; import torch; import chromadb; print(f'✓ NumPy: {numpy.__version__}'); print(f'✓ PyTorch: {torch.__version__}'); print(f'✓ ChromaDB: {chromadb.__version__}')"
 
 # Final cleanup (Railway-safe, no pip purge)
 RUN apt-get autoremove -y && apt-get clean && \

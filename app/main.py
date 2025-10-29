@@ -9,25 +9,28 @@ from .routes_rag import router as rag_router
 from .config import ALLOW_ORIGINS
 
 
-def check_numpy_compatibility():
-    """Check NumPy version compatibility with ChromaDB"""
+def check_dependencies():
+    """Check that required dependencies are installed and log versions"""
     try:
         import numpy
-        if numpy.__version__.startswith('2.'):
-            logging.error(f"CRITICAL: NumPy 2.x detected ({numpy.__version__}). "
-                         f"ChromaDB is not compatible with NumPy 2.x. "
-                         f"This will cause runtime errors!")
-            raise RuntimeError(f"NumPy 2.x incompatibility detected: {numpy.__version__}")
-        else:
-            logging.info(f"NumPy version check passed: {numpy.__version__}")
+        logging.info(f"NumPy version: {numpy.__version__}")
     except ImportError:
-        logging.warning("NumPy not found - this may cause issues with ML dependencies")
+        logging.error("NumPy not installed!")
+        raise RuntimeError("NumPy is required but not installed")
+    
+    try:
+        import torch
+        cuda_status = "available" if torch.cuda.is_available() else "not available (CPU-only)"
+        logging.info(f"PyTorch version: {torch.__version__} | CUDA: {cuda_status}")
+    except ImportError:
+        logging.error("PyTorch not installed!")
+        raise RuntimeError("PyTorch is required but not installed")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
-    check_numpy_compatibility()
+    check_dependencies()
     init_db()
     yield
     # Shutdown logic (optional)
