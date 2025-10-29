@@ -25,7 +25,7 @@ pymupdf>=1.23.0  # PDF rendering fallback (fitz)
 # Using Pinecone for cloud-based vector storage
 # OpenAI for embeddings (mandatory)
 pinecone>=5.0.0,<6.0.0  # Includes client, no need for separate pinecone-client
-openai==1.51.0
+openai>=1.54.0  # Python 3.13 compatible version
 
 # Database & ORM
 sqlmodel==0.0.22

@@ -66,7 +66,7 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
 # Install AI stack (Pinecone for vector DB, OpenAI for embeddings)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     pinecone>=5.0.0 \
-    openai==1.51.0
+    openai>=1.54.0
 
 # Verify dependencies are installed correctly
 RUN python -c "import numpy; from pinecone import Pinecone; import openai; print('✓ NumPy:', numpy.__version__); print('✓ Pinecone client installed'); print('✓ OpenAI:', openai.__version__)"
