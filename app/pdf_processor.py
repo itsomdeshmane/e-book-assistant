@@ -35,17 +35,10 @@ PDF2IMAGE_DPI = CFG_PDF2IMAGE_DPI
 
 # Memory management utilities
 import gc
-import psutil
-import os
 
 def log_memory_usage(stage: str):
-    """Log current memory usage for debugging"""
-    try:
-        process = psutil.Process(os.getpid())
-        memory_mb = process.memory_info().rss / 1024 / 1024
-        logging.info(f"[MEMORY] {stage}: {memory_mb:.1f} MB")
-    except Exception:
-        pass
+    """Log stage progress (memory monitoring removed to reduce dependencies)"""
+    logging.info(f"[PROGRESS] {stage}")
 
 def cleanup_memory():
     """Force garbage collection and memory cleanup"""

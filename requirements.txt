@@ -1,41 +1,37 @@
 # =============================================================================
-# DEPENDENCY VERSIONS
+# DEPENDENCY VERSIONS - OPTIMIZED FOR SIZE
 # =============================================================================
 # Python 3.13+ compatible versions
-# ChromaDB 0.5.5+ now supports NumPy 2.x
-# PyTorch CPU-only version is used to minimize package size
+# Removed unnecessary packages to reduce deployment size from 250MB+ to ~100-150MB
 # =============================================================================
 
 # Scientific Computing & Image Processing
-# NumPy 2.x is compatible with ChromaDB 0.5.5+ and required for Python 3.13+
+# NumPy 2.x is compatible with Python 3.13+
 # OpenCV requires numpy<2.3.0, so we cap at 2.2.x
 numpy>=2.0,<2.3
 
 # Web Framework
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-gunicorn==21.2.0  # Alternative WSGI server for Azure
 
 # PDF Processing
 pypdf==4.3.1
 pdf2image==1.17.0
 pillow==10.4.0
-opencv-python-headless==4.10.0.84
-pdfplumber==0.11.4
+opencv-python-headless==4.10.0.84  # Headless version for server use (smaller)
 pymupdf>=1.23.0  # PDF rendering fallback (fitz)
 
 # Vector Database & AI
 # Using Pinecone for cloud-based vector storage
 # OpenAI for embeddings (mandatory)
-pinecone>=5.0.0,<6.0.0
-pinecone-client>=5.0.0  # Explicit client dependency
+pinecone>=5.0.0,<6.0.0  # Includes client, no need for separate pinecone-client
 openai==1.51.0
 
 # Database & ORM
 sqlmodel==0.0.22
 
 # Authentication & Security
-passlib[bcrypt]==1.7.4
+passlib==1.7.4  # Without bcrypt extra - using argon2 only
 argon2-cffi==23.1.0
 python-jose[cryptography]==3.3.0
 
@@ -51,8 +47,3 @@ azure-ai-documentintelligence==1.0.0b4
 # HTTP & Utilities
 requests==2.32.3
 email-validator==2.2.0
-python-magic==0.4.27
-psutil==6.0.0
-
-# Additional OpenCV
-opencv-python==4.10.0.84

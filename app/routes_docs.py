@@ -7,7 +7,7 @@ from .vector_db import add_chunks, delete_doc_chunks
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select
 from .utils import compute_file_hash
-import magic
+from pypdf import PdfReader
 
 from .db import get_session, engine  # engine must be exported from your db.py
 from .models import Document, Conversation, InterviewSession
@@ -45,31 +45,7 @@ def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
     Raises:
         HTTPException: If any validation fails
     """
-    # If we have the saved path, trust content inspection over name/content-type
-    if file_path and os.path.exists(file_path):
-        try:
-            file_mime_type = magic.from_file(file_path, mime=True)
-            if file_mime_type != "application/pdf":
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid file content. The file must be a valid PDF document."
-                )
-            # Size check using filesystem
-            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-            size_bytes = os.path.getsize(file_path)
-            if size_bytes > MAX_FILE_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File too large. Maximum size allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
-                )
-            return
-        except magic.MagicException:
-            logger.warning("python-magic not available for file type validation; falling back to filename/content-type checks")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"File validation failed: {str(e)}")
-
-    # Fallback checks when path inspection is not available
-    # Validate filename extension (best-effort)
+    # Validate filename extension
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported (missing .pdf extension)")
 
@@ -80,6 +56,29 @@ def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
             status_code=400,
             detail="Invalid file type. Only PDF files are allowed."
         )
+    
+    # If we have the saved path, validate it's actually a valid PDF
+    if file_path and os.path.exists(file_path):
+        # Size check using filesystem
+        MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+        size_bytes = os.path.getsize(file_path)
+        if size_bytes > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
+            )
+        
+        # Try to open with pypdf to validate it's a real PDF
+        try:
+            reader = PdfReader(file_path)
+            # Try to access page count to ensure file is readable
+            _ = len(reader.pages)
+        except Exception as e:
+            logger.error(f"PDF validation failed for {file_path}: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file content. The file must be a valid PDF document."
+            )
 
 
 def _safe_update_doc_status(doc_id: int, status: str, chunk_count: int | None = None):
