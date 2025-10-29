@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from typing import List, Dict, Any
-from .vector_db import add_chunks, collection_for_user, delete_doc_chunks
+from .vector_db import add_chunks, delete_doc_chunks
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select
 from .utils import compute_file_hash
@@ -21,7 +21,6 @@ except Exception:
 
 from .chunker import chunk_text
 from .embeddings import get_embedding
-from .vector_db import add_chunks, collection_for_user
 from .security import get_current_user
 
 router = APIRouter(prefix="/documents", tags=["Documents"])

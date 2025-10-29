@@ -10,21 +10,32 @@ from .config import ALLOW_ORIGINS
 
 
 def check_dependencies():
-    """Check that required dependencies are installed and log versions"""
+    """Check that required dependencies and API keys are configured"""
+    import os
+    from .config import OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX_NAME
+    
+    # Check OpenAI
+    if not OPENAI_API_KEY:
+        logging.error("OPENAI_API_KEY not configured!")
+        raise RuntimeError("OPENAI_API_KEY environment variable is required")
+    logging.info("✓ OpenAI API key configured")
+    
+    # Check Pinecone
+    if not PINECONE_API_KEY:
+        logging.error("PINECONE_API_KEY not configured!")
+        raise RuntimeError("PINECONE_API_KEY environment variable is required")
+    if not PINECONE_INDEX_NAME:
+        logging.error("PINECONE_INDEX_NAME not configured!")
+        raise RuntimeError("PINECONE_INDEX_NAME environment variable is required")
+    logging.info(f"✓ Pinecone configured (index: {PINECONE_INDEX_NAME})")
+    
+    # Check NumPy (still needed for image processing)
     try:
         import numpy
-        logging.info(f"NumPy version: {numpy.__version__}")
+        logging.info(f"✓ NumPy version: {numpy.__version__}")
     except ImportError:
         logging.error("NumPy not installed!")
         raise RuntimeError("NumPy is required but not installed")
-    
-    try:
-        import torch
-        cuda_status = "available" if torch.cuda.is_available() else "not available (CPU-only)"
-        logging.info(f"PyTorch version: {torch.__version__} | CUDA: {cuda_status}")
-    except ImportError:
-        logging.error("PyTorch not installed!")
-        raise RuntimeError("PyTorch is required but not installed")
 
 
 @asynccontextmanager

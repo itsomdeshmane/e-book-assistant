@@ -9,11 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     QT_QPA_PLATFORM=offscreen \
     OPENCV_IO_ENABLE_OPENEXR=1 \
-    OPENCV_IO_ENABLE_GDAL=1 \
-    HF_HOME=/app/.cache/huggingface \
-    TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers \
-    HF_DATASETS_CACHE=/app/.cache/huggingface/datasets \
-    SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface/sentence_transformers
+    OPENCV_IO_ENABLE_GDAL=1
 
 # Set working directory
 WORKDIR /app
@@ -67,20 +63,13 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     opencv-python-headless==4.10.0.84 \
     opencv-python==4.10.0.84
 
-# Install PyTorch CPU-only version (~2GB smaller than CUDA version)
+# Install AI stack (Pinecone for vector DB, OpenAI for embeddings)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    torch --index-url https://download.pytorch.org/whl/cpu
-
-# Install ML stack (ChromaDB, embeddings, transformers)
-RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
-    chromadb==0.5.5 \
-    openai==1.51.0 \
-    transformers==4.44.2 \
-    sentence-transformers==3.1.1 \
-    sentencepiece==0.2.0
+    pinecone>=5.0.0 \
+    openai==1.51.0
 
 # Verify dependencies are installed correctly
-RUN python -c "import numpy; import torch; import chromadb; print(f'✓ NumPy: {numpy.__version__}'); print(f'✓ PyTorch: {torch.__version__}'); print(f'✓ ChromaDB: {chromadb.__version__}')"
+RUN python -c "import numpy; from pinecone import Pinecone; import openai; print('✓ NumPy:', numpy.__version__); print('✓ Pinecone client installed'); print('✓ OpenAI:', openai.__version__)"
 
 # Final cleanup (Railway-safe, no pip purge)
 RUN apt-get autoremove -y && apt-get clean && \
@@ -91,12 +80,11 @@ COPY app/ ./app/
 COPY *.py ./
 
 # Create necessary directories
-RUN mkdir -p uploads chroma_db .cache/huggingface
+RUN mkdir -p uploads
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 RUN chown -R appuser:appuser /app /home/appuser
-RUN mkdir -p /home/appuser/.cache/huggingface && chown -R appuser:appuser /home/appuser/.cache
 
 # Switch to non-root user
 USER appuser
