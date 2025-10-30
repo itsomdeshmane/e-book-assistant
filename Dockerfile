@@ -55,8 +55,13 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     pdf2image==1.17.0 \
     pillow==10.4.0 \
     pdfplumber==0.11.4 \
-    pymupdf>=1.23.0 \
-    azure-ai-documentintelligence==1.0.0b4
+    pymupdf>=1.23.0
+
+# Install Azure AI services
+RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
+    azure-ai-documentintelligence==1.0.0b4 \
+    azure-ai-formrecognizer>=3.3.0 \
+    azure-storage-blob>=12.19.0
 
 # Install OpenCV (headless for Docker, no GUI dependencies)
 RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
@@ -69,7 +74,7 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 \
     openai>=1.54.0
 
 # Verify dependencies are installed correctly
-RUN python -c "import numpy; from pinecone import Pinecone; import openai; print('✓ NumPy:', numpy.__version__); print('✓ Pinecone client installed'); print('✓ OpenAI:', openai.__version__)"
+RUN python -c "import numpy; from pinecone import Pinecone; import openai; from azure.storage.blob import BlobServiceClient; print('✓ NumPy:', numpy.__version__); print('✓ Pinecone client installed'); print('✓ OpenAI:', openai.__version__); print('✓ Azure Storage Blob installed')"
 
 # Final cleanup (Railway-safe, no pip purge)
 RUN apt-get autoremove -y && apt-get clean && \
