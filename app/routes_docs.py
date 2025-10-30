@@ -2,8 +2,10 @@
 import logging
 import os
 import uuid
+import tempfile
 from typing import List, Dict, Any
 from .vector_db import add_chunks, delete_doc_chunks
+from .blob_storage import upload_to_blob, download_from_blob, delete_from_blob
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select
 from .utils import compute_file_hash
@@ -25,22 +27,17 @@ from .security import get_current_user
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-# Resolve uploads dir relative to project root to avoid CWD issues
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 logger = logging.getLogger("routes_docs")
 logging.basicConfig(level=logging.INFO)
 
 
-def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
+def validate_pdf_file(file: UploadFile, file_bytes: bytes | None = None) -> None:
     """
     Comprehensive PDF file validation including filename, content type, size, and file content.
     
     Args:
         file: The uploaded file object
-        file_path: Optional path to the saved file for content validation
+        file_bytes: Optional file bytes for content validation
         
     Raises:
         HTTPException: If any validation fails
@@ -57,11 +54,11 @@ def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
             detail="Invalid file type. Only PDF files are allowed."
         )
     
-    # If we have the saved path, validate it's actually a valid PDF
-    if file_path and os.path.exists(file_path):
-        # Size check using filesystem
+    # If we have the file bytes, validate size and content
+    if file_bytes:
+        # Size check
         MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-        size_bytes = os.path.getsize(file_path)
+        size_bytes = len(file_bytes)
         if size_bytes > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=400,
@@ -70,11 +67,12 @@ def validate_pdf_file(file: UploadFile, file_path: str | None = None) -> None:
         
         # Try to open with pypdf to validate it's a real PDF
         try:
-            reader = PdfReader(file_path)
+            import io
+            reader = PdfReader(io.BytesIO(file_bytes))
             # Try to access page count to ensure file is readable
             _ = len(reader.pages)
         except Exception as e:
-            logger.error(f"PDF validation failed for {file_path}: {e}")
+            logger.error(f"PDF validation failed: {e}")
             raise HTTPException(
                 status_code=400,
                 detail="Invalid file content. The file must be a valid PDF document."
@@ -103,12 +101,14 @@ def _safe_update_doc_status(doc_id: int, status: str, chunk_count: int | None = 
         logger.exception(f"[BG] Failed to update doc status for {doc_id}: {e}")
 
 
-def process_pdf_background(user_id: int, doc_id: int, path: str):
+def process_pdf_background(user_id: int, doc_id: int, blob_name: str):
     """
     Memory-optimized background worker: per-page extraction, chunk, embed, store to vector DB.
     Uses extract_pages_text with OCR fallback for scanned/handwritten PDFs.
+    Downloads blob temporarily, processes it, then deletes the temp file.
     """
     total_chunks = 0
+    temp_file_path = None
     
     # Import memory utilities
     try:
@@ -119,6 +119,18 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
         def cleanup_memory(): pass
 
     try:
+        # Download blob to temporary file
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+            temp_file_path = tmp_file.name
+        
+        logger.info(f"[BG] Downloading blob {blob_name} to temp file {temp_file_path}")
+        download_from_blob(blob_name, temp_file_path)
+        
+        if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            logger.error(f"[BG] Failed to download blob to {temp_file_path}")
+            raise RuntimeError("Failed to download PDF from Azure Blob Storage")
+        
+        path = temp_file_path
         if _USE_PAGE_EXTRACTOR:
             from .pdf_processor import extract_pages_text as extract_with_force
 
@@ -202,7 +214,15 @@ def process_pdf_background(user_id: int, doc_id: int, path: str):
         log_memory_usage(f"Failed PDF processing for doc_id={doc_id}")
         _safe_update_doc_status(doc_id, status="failed", chunk_count=total_chunks)
     finally:
-        # Final cleanup
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                logger.info(f"[BG] Cleaned up temporary file: {temp_file_path}")
+            except Exception as e:
+                logger.warning(f"[BG] Failed to clean up temporary file {temp_file_path}: {e}")
+        
+        # Final memory cleanup
         cleanup_memory()
 
 
@@ -213,34 +233,25 @@ async def upload_pdf(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    fname = f"{uuid.uuid4().hex}_{file.filename}"
-    path = os.path.join(UPLOAD_DIR, fname)
-
-    # Save uploaded file temporarily (absolute path)
-    file_bytes = await file.read()
-    with open(path, "wb") as f:
-        f.write(file_bytes)
-
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
-        logger.error(f"[upload_pdf] Failed to persist file to {path}")
-        raise HTTPException(status_code=500, detail="Failed to persist uploaded file")
-    else:
-        try:
-            size = os.path.getsize(path)
-        except Exception:
-            pass
+    # Generate unique blob name
+    blob_name = f"{uuid.uuid4().hex}_{file.filename}"
     
-    # Content-based validation using python-magic (filename extension not required)
+    # Read uploaded file bytes
+    file_bytes = await file.read()
+    
+    if not file_bytes or len(file_bytes) == 0:
+        logger.error(f"[upload_pdf] Uploaded file is empty")
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    
+    # Validate PDF file
     try:
-        validate_pdf_file(file, path)
+        validate_pdf_file(file, file_bytes)
     except HTTPException:
-        # Clean up the temporary file if validation fails
-        if os.path.exists(path):
-            os.remove(path)
         raise
-
+    
     # ✅ Compute hash of the uploaded file
-    file_hash = compute_file_hash(path)
+    import hashlib
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
 
     # ✅ Check if a document with same hash already exists for this user
     existing_doc = session.exec(
@@ -248,15 +259,21 @@ async def upload_pdf(
     ).first()
 
     if existing_doc:
-        # remove temp file since it won’t be used
-        os.remove(path)
         raise HTTPException(status_code=400, detail="This PDF has already been uploaded.")
+
+    # Upload to Azure Blob Storage
+    try:
+        upload_to_blob(file_bytes, blob_name)
+        logger.info(f"[upload_pdf] Successfully uploaded {blob_name} to Azure Blob Storage")
+    except Exception as e:
+        logger.error(f"[upload_pdf] Failed to upload to Azure Blob Storage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload file to storage")
 
     # ✅ Create document record with "processing" status
     doc = Document(
         owner_id=user.id,
         title=file.filename,
-        filename=fname,
+        filename=blob_name,  # Store blob name
         file_hash=file_hash,   # store hash for duplicate checks
         chunk_count=0,
     )
@@ -267,8 +284,8 @@ async def upload_pdf(
     session.commit()
     session.refresh(doc)
 
-    # ✅ Queue background processing
-    background_tasks.add_task(process_pdf_background, user.id, doc.id, path)
+    # ✅ Queue background processing with blob name
+    background_tasks.add_task(process_pdf_background, user.id, doc.id, blob_name)
 
     return {"message": "Upload received, processing in background", "doc_id": doc.id}
 
@@ -310,19 +327,20 @@ def delete_document(
     # Default value in case delete_doc_chunks fails
     res = {}
 
-    # First: delete vector chunks from Chroma (best effort)
+    # First: delete vector chunks from Pinecone (best effort)
     try:
         res = delete_doc_chunks(user.id, doc_id)
         logger.info(f"[routes_docs] delete_doc_chunks result: {res}")
     except Exception as e:
         logger.exception(f"[routes_docs] delete_doc_chunks failed for doc_id={doc_id}: {e}")
-        # continue with DB + file cleanup
+        # continue with DB + blob cleanup
 
-    # Remove file (best effort)
+    # Remove blob from Azure (best effort)
     try:
-        os.remove(os.path.join(UPLOAD_DIR, doc.filename))
-    except FileNotFoundError:
-        pass
+        delete_from_blob(doc.filename)
+        logger.info(f"[routes_docs] Successfully deleted blob: {doc.filename}")
+    except Exception as e:
+        logger.warning(f"[routes_docs] Failed to delete blob {doc.filename}: {e}")
 
     # Delete related conversations first (CASCADE DELETE)
     conversations = session.exec(select(Conversation).where(Conversation.document_id == doc_id))

@@ -10,9 +10,9 @@ import cv2
 from pdf2image import convert_from_path
 from pypdf import PdfReader
 
-# Azure AI Document Intelligence SDK
+# Azure Form Recognizer SDK (stable, works with both old and new Azure resources)
 from azure.core.credentials import AzureKeyCredential
-from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.formrecognizer import DocumentAnalysisClient
 
 from .config import (
     PDF2IMAGE_DPI as CFG_PDF2IMAGE_DPI,
@@ -120,20 +120,22 @@ def auto_crop_scan_borders(img: np.ndarray) -> np.ndarray:
 # ---------- OCR helpers ----------
 def azure_document_intelligence_read_image_bytes(image_bytes: bytes, *, features: Optional[List[str]] = None, lang: str = "en") -> Dict[str, Any]:
     """
-    Call Azure AI Document Intelligence Read (prebuilt-read) to extract text with handwriting support.
+    Call Azure Form Recognizer (Document Analysis) to extract text with handwriting support.
+    Uses the stable azure-ai-formrecognizer SDK which works with both old and new Azure resources.
     Returns dict with 'text' and 'avg_conf' approximated from spans.
     """
     if not AZURE_DI_ENDPOINT or not AZURE_DI_KEY:
         raise RuntimeError("Azure Document Intelligence not configured")
 
-    # Initialize the client
-    client = DocumentIntelligenceClient(
-        endpoint=AZURE_DI_ENDPOINT,
+    # Initialize the client (remove trailing slash for formrecognizer SDK)
+    endpoint = AZURE_DI_ENDPOINT.rstrip('/')
+    client = DocumentAnalysisClient(
+        endpoint=endpoint,
         credential=AzureKeyCredential(AZURE_DI_KEY)
     )
 
     # Analyze the document using prebuilt-read model
-    poller = client.begin_analyze_document("prebuilt-read", image_bytes)
+    poller = client.begin_analyze_document("prebuilt-read", document=image_bytes)
     result = poller.result()
 
     # Extract text and calculate confidence
@@ -169,6 +171,28 @@ def render_pdf_pages_batch(path: str, dpi: int, start_page: int = 0, max_pages: 
     """Render PDF pages in batches to reduce memory usage"""
     log_memory_usage(f"Starting PDF render batch (pages {start_page}-{start_page + (max_pages or PROCESS_PAGES_BATCH_SIZE)})")
     
+    # Try PyMuPDF first (no external dependencies, works on all platforms)
+    if _HAVE_PYMUPDF:
+        try:
+            zoom = dpi / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+            pages = []
+            with fitz.open(path) as doc:
+                end_page = min(start_page + (max_pages or PROCESS_PAGES_BATCH_SIZE), len(doc), MAX_PDF_PAGES)
+                for page_num in range(start_page, end_page):
+                    page = doc[page_num]
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    img_bytes = pix.tobytes("png")
+                    pages.append(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
+                    # Clean up immediately
+                    del pix, img_bytes
+            logging.info(f"[PDF->Image] Rendered {len(pages)} pages via PyMuPDF")
+            log_memory_usage(f"Rendered {len(pages)} pages")
+            return pages
+        except Exception as e:
+            logging.warning(f"[PDF->Image] PyMuPDF failed: {e}, falling back to pdf2image")
+    
+    # Fallback to pdf2image/Poppler if PyMuPDF is not available or fails
     try:
         # Use pdf2image with specific page range
         if max_pages:
@@ -182,29 +206,12 @@ def render_pdf_pages_batch(path: str, dpi: int, start_page: int = 0, max_pages: 
             first_page=start_page + 1,  # pdf2image uses 1-based indexing
             last_page=end_page
         )
+        logging.info(f"[PDF->Image] Rendered {len(pages)} pages via pdf2image/Poppler")
         log_memory_usage(f"Rendered {len(pages)} pages")
         return pages
     except Exception as e:
-        logging.error(f"[PDF->Image] convert_from_path failed: {e}")
-        if _HAVE_PYMUPDF:
-            try:
-                zoom = dpi / 72.0
-                mat = fitz.Matrix(zoom, zoom)
-                pages = []
-                with fitz.open(path) as doc:
-                    end_page = min(start_page + (max_pages or PROCESS_PAGES_BATCH_SIZE), len(doc), MAX_PDF_PAGES)
-                    for page_num in range(start_page, end_page):
-                        page = doc[page_num]
-                        pix = page.get_pixmap(matrix=mat, alpha=False)
-                        img_bytes = pix.tobytes("png")
-                        pages.append(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
-                        # Clean up immediately
-                        del pix, img_bytes
-                logging.info(f"[PDF->Image] Rendered {len(pages)} pages via PyMuPDF fallback")
-                return pages
-            except Exception as e2:
-                logging.error(f"[PDF->Image] PyMuPDF fallback failed: {e2}")
-        raise RuntimeError("No PDF renderer available (Poppler or PyMuPDF required)")
+        logging.error(f"[PDF->Image] pdf2image/Poppler failed: {e}")
+        raise RuntimeError("No PDF renderer available. Please ensure PyMuPDF (pymupdf) is installed: pip install pymupdf")
 
 def render_pdf_pages(path: str, dpi: int) -> List[Image.Image]:
     """Legacy function - now uses batch processing"""

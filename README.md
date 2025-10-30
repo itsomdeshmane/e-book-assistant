@@ -1,8 +1,9 @@
-# AI-Powered E-Book / Knowledge Assistant (FastAPI + Auth + ChromaDB)
+# AI-Powered E-Book / Knowledge Assistant (FastAPI + Auth + Pinecone)
 
 ## Features
 - User registration & login (JWT)
-- Upload PDF, extract text, chunk, embed (OpenAI), store in ChromaDB (persistent)
+- Upload PDF, extract text, chunk, embed (OpenAI), store in Pinecone (cloud vector database)
+- **Cloud Storage** - PDF files stored securely in Azure Blob Storage
 - Ask questions against a selected document (RAG)
 - List / get / delete documents
 - Optional chapter or full-book summarization
@@ -55,13 +56,16 @@ ALLOW_ORIGINS=*
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
 
+# Pinecone Configuration (Required for vector storage)
+PINECONE_API_KEY=your_pinecone_api_key_here
+PINECONE_INDEX_NAME=your_pinecone_index_name
+
 # JWT Configuration
 JWT_SECRET=your_jwt_secret_here
 JWT_EXPIRE_MINUTES=120
 
 # Database Configuration
 DATABASE_URL=sqlite:///./app.db
-CHROMA_DB_DIR=./chroma_db
 
 # Text Processing Configuration
 CHUNK_SIZE=1000
@@ -77,7 +81,23 @@ PDF2IMAGE_DPI=200
 AZURE_DI_ENDPOINT=https://your-resource-name.cognitiveservices.azure.com
 AZURE_DI_KEY=your_azure_di_key_here
 AZURE_DI_API_VERSION=2024-07-31
+
+# Azure Blob Storage Configuration (Required for file storage)
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=yourstoragename;AccountKey=your-key-here==;EndpointSuffix=core.windows.net
+AZURE_STORAGE_CONTAINER_NAME=pdf-uploads
 ```
+
+### Azure Blob Storage Setup
+
+**Azure Blob Storage is required** for storing uploaded PDF files. The application no longer uses local file storage.
+
+For detailed setup instructions, see **[AZURE_BLOB_SETUP.md](AZURE_BLOB_SETUP.md)**.
+
+Quick setup:
+1. Create an Azure Storage Account in the Azure portal
+2. Create a container named `pdf-uploads` (or your preferred name)
+3. Get your connection string from the storage account's "Access keys" section
+4. Set the `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER_NAME` environment variables
 
 ### Azure AI Document Intelligence Setup
 
@@ -85,6 +105,17 @@ AZURE_DI_API_VERSION=2024-07-31
 2. Get your endpoint URL and API key from the resource
 3. Set the `AZURE_DI_ENDPOINT` and `AZURE_DI_KEY` environment variables
 4. The system will intelligently use Azure AI Document Intelligence only when needed
+
+### Pinecone Setup
+
+1. Create a free account at [Pinecone](https://www.pinecone.io/)
+2. Create a new index with the following settings:
+   - **Dimensions**: 1536 (for OpenAI's text-embedding-3-small model)
+   - **Metric**: cosine
+   - **Cloud**: Choose your preferred region
+3. Copy your API key and index name
+4. Set `PINECONE_API_KEY` and `PINECONE_INDEX_NAME` environment variables
+5. The system automatically creates user-specific namespaces for data isolation
 
 ## API Endpoints
 
@@ -133,12 +164,15 @@ AZURE_DI_API_VERSION=2024-07-31
 ## Architecture
 
 ### Text Processing Pipeline
-1. **PDF Upload** → Extract text using PyPDF
-2. **Quality Check** → Verify if extracted text is meaningful
-3. **Smart Decision** → Use OCR only if text quality is insufficient
-4. **Chunking** → Create semantic chunks with overlap
-5. **Embedding** → Generate embeddings using OpenAI
-6. **Storage** → Store in ChromaDB with metadata
+1. **PDF Upload** → Store in Azure Blob Storage
+2. **Download Temporarily** → Download to temp file for processing
+3. **Text Extraction** → Extract text using PyPDF
+4. **Quality Check** → Verify if extracted text is meaningful
+5. **Smart Decision** → Use OCR only if text quality is insufficient
+6. **Chunking** → Create semantic chunks with overlap
+7. **Embedding** → Generate embeddings using OpenAI
+8. **Vector Storage** → Store in Pinecone with metadata
+9. **Cleanup** → Remove temporary file
 
 ### OCR Decision Logic
 ```
@@ -195,9 +229,8 @@ Extracted Text → Quality Check → Decision
 - Azure AI Document Intelligence credentials (optional but recommended)
 
 ### Environment Setup
-Create a `.env` file in the project root:
+Create a `.env` file in the project root with your actual values:
 
-Edit the `.env` file with your actual values:
 ```env
 # Server Configuration
 PORT=8000
@@ -207,10 +240,20 @@ ALLOW_ORIGINS=*
 OPENAI_API_KEY=your_openai_api_key_here
 JWT_SECRET=your_secure_jwt_secret_here
 
-# Optional but recommended
+# Required - Azure Blob Storage
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=yourstoragename;AccountKey=your-key==;EndpointSuffix=core.windows.net
+AZURE_STORAGE_CONTAINER_NAME=pdf-uploads
+
+# Required - Pinecone Vector Database
+PINECONE_API_KEY=your_pinecone_api_key_here
+PINECONE_INDEX_NAME=your_pinecone_index_name
+
+# Required - Azure Document Intelligence (OCR)
 AZURE_DI_ENDPOINT=https://your-resource-name.cognitiveservices.azure.com
 AZURE_DI_KEY=your_azure_di_key_here
 ```
+
+**See [AZURE_BLOB_SETUP.md](AZURE_BLOB_SETUP.md) for detailed Azure Blob Storage setup instructions.**
 
 ### Running with Docker Compose
 ```bash
@@ -237,8 +280,6 @@ docker run -p 8000:8000 --env-file .env e-book-assistant
 
 # Run with volume mounts for persistence
 docker run -p 8000:8000 \
-  -v $(pwd)/uploads:/app/uploads \
-  -v $(pwd)/chroma_db:/app/chroma_db \
   -v $(pwd)/app.db:/app/app.db \
   --env-file .env \
   e-book-assistant
@@ -246,9 +287,11 @@ docker run -p 8000:8000 \
 
 ### Data Persistence
 The Docker setup includes volume mounts for:
-- `uploads/` - PDF files and processed documents
-- `chroma_db/` - Vector database storage
-- `app.db` - SQLite database
+- `app.db` - SQLite database (user data, documents metadata)
+
+**File Storage**: PDF files are stored in Azure Blob Storage (cloud-based), eliminating the need for local file volumes.
+
+**Vector Storage**: Embeddings are stored in Pinecone (cloud-based), so no local volume is needed.
 
 ### Health Checks
 The application includes health checks accessible at:
@@ -275,12 +318,17 @@ git push heroku main
 # Set environment variables in Railway dashboard
 # PORT is automatically set by Railway
 # ALLOW_ORIGINS should be set to your domain
+# PINECONE_API_KEY and PINECONE_INDEX_NAME are required
+# AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER_NAME are required
+# AZURE_DI_ENDPOINT and AZURE_DI_KEY are required
 ```
 
 #### Google Cloud Run / AWS ECS
 - Set `PORT` environment variable (usually provided by the platform)
 - Set `ALLOW_ORIGINS` to your domain for security
-- Set `CHROMA_DB_DIR` to `/tmp/chroma_db` for ephemeral storage
+- Set `PINECONE_API_KEY` and `PINECONE_INDEX_NAME` for vector storage
+- Set `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER_NAME` for file storage
+- Set `AZURE_DI_ENDPOINT` and `AZURE_DI_KEY` for OCR capabilities
 
 ## Development
 

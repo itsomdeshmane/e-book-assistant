@@ -126,7 +126,7 @@ def summarize(user_id: int, doc_id: int, scope: str = "full", chapter_hint: str 
         if not docs or not any(docs):
             return "Summary unavailable (no content retrieved)."
 
-    # Flatten nested lists from ChromaDB
+    # Flatten nested lists if necessary
     flat_docs = []
     for d in docs:
         if isinstance(d, list):

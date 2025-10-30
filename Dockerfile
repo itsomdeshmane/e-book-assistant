@@ -27,7 +27,7 @@ RUN apt-get update --fix-missing && \
 COPY requirements.txt .
 
 # ------------------------------------------------------------
-# 🔧 Install NumPy 2.x (compatible with ChromaDB 0.5.5+ and Python 3.13+)
+# 🔧 Install NumPy 2.x (compatible with Python 3.13+)
 # OpenCV requires numpy<2.3, so we cap at 2.2.x
 # ------------------------------------------------------------
 RUN pip install --no-cache-dir "numpy>=2.0,<2.3"

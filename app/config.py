@@ -43,3 +43,11 @@ PROCESS_PAGES_BATCH_SIZE = int(os.getenv("PROCESS_PAGES_BATCH_SIZE", "5"))  # Pr
 AZURE_DI_ENDPOINT = os.getenv("AZURE_DI_ENDPOINT", "")  # e.g. https://<resource-name>.cognitiveservices.azure.com
 AZURE_DI_KEY = os.getenv("AZURE_DI_KEY", "")
 AZURE_DI_API_VERSION = os.getenv("AZURE_DI_API_VERSION", "2024-07-31")
+
+# Azure Blob Storage Configuration (Mandatory)
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+AZURE_STORAGE_CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "pdf-uploads")
+if not AZURE_STORAGE_CONNECTION_STRING:
+    raise ValueError("AZURE_STORAGE_CONNECTION_STRING environment variable is required")
+if not AZURE_STORAGE_CONTAINER_NAME:
+    raise ValueError("AZURE_STORAGE_CONTAINER_NAME environment variable is required")

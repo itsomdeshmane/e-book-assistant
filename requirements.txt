@@ -41,8 +41,14 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 python-multipart==0.0.12
 
-# Azure AI Document Intelligence SDK
+# Azure AI Document Intelligence SDK (newer SDK, may have compatibility issues)
 azure-ai-documentintelligence==1.0.0b4
+
+# Azure Form Recognizer SDK (stable, recommended for OCR)
+azure-ai-formrecognizer>=3.3.0
+
+# Azure Blob Storage SDK
+azure-storage-blob>=12.19.0
 
 # HTTP & Utilities
 requests==2.32.3

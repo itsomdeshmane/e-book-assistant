@@ -13,13 +13,16 @@ services:
       # OpenAI Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
+      # Pinecone Configuration
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
+      
       # JWT Configuration
       - JWT_SECRET=${JWT_SECRET:-change_me_in_production}
       - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-120}
       
       # Database Configuration
       - DATABASE_URL=sqlite:///./app.db
-      - CHROMA_DB_DIR=${CHROMA_DB_DIR:-./chroma_db}
       
       # Text Processing Configuration
       - CHUNK_SIZE=${CHUNK_SIZE:-1000}
@@ -39,7 +42,6 @@ services:
       # Persist database and uploads
       - ./data:/app/data
       - ./uploads:/app/uploads
-      - ./chroma_db:/app/chroma_db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get(f'http://localhost:${PORT:-8000}/healthz')"]
