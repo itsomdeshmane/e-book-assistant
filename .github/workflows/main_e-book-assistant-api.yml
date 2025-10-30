@@ -50,37 +50,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
+    
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
       
-      - name: Display artifact contents
-        run: |
-          echo "Artifact contents:"
-          ls -la
-          echo "App directory:"
-          ls -la app/ || echo "No app directory"
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_308E4F5B58944FA8997F935204D2A37B }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_95205C7BFA3E4EE3BFE3CBF15055D06B }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1B95F962EF534FCE87CF80325AF35E60 }}
-
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'e-book-assistant-api'
           slot-name: 'Production'
-          startup-command: 'bash startup.sh'
-          clean: true
-          restart: true
-          
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_719D22D68A2B49B4AA3644F67D7CA277 }}
